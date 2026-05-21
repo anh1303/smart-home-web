@@ -1,0 +1,15 @@
+{
+  "autoCloseSeconds": 10,
+  "fan": {
+    "tempOn": 33,
+    "tempOff": 29,
+    "humOn": 40,
+    "humOff": 45,
+    "autoSpeed": 8
+  },
+  "light": {
+    "holdSeconds": 10,
+    "brightness": 51,
+    "effect": "fading"
+  }
+}
