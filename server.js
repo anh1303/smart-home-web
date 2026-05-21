@@ -1,31 +1,3 @@
-/**
- * =====================================================================
- *  SMART HOME GATEWAY — V4.0 (WebSocket)
- * =====================================================================
- *
- *  THAY ĐỔI CHÍNH:
- *  [V4.0] Toàn bộ giao tiếp ESP32 ↔ Server chuyển sang WebSocket
- *         - Bỏ: giao tiếp UDP cũ, ESP32 giao tiếp bằng WebSocket
- *         - Thêm: ws library, ESP32 kết nối ws://server:PORT/ws/esp32
- *         - Tất cả lệnh: request-response qua WS với correlation ID
- *         - ESP32 tự push status theo thay đổi đáng kể và heartbeat 20s
- *         - SSE level "STATUS" để dashboard nhận sensor realtime
- *
- *  ENDPOINTS:
- *    GET  /sensor         → trả về sensor data cache (push gần nhất)
- *    GET  /esp32-status   → trạng thái kết nối WS của ESP32
- *    POST /command        → relay lệnh qua WebSocket đến ESP32
- *    POST /gara           → điều khiển cổng gara { action: "open"|"close" }
- *    POST /fan            → điều khiển quạt { mode, dir, speed }
- *    POST /light          → điều khiển đèn hành lang { state: "on"|"off"|"auto" }
- *    GET  /log-stream     → SSE cho dashboard
- *
- *  CÀI ĐẶT:
- *    npm install express cors ws
- *    node server.js
- * =====================================================================
- */
-
 //server.js
 
 try {
@@ -155,8 +127,7 @@ function writeLocalEvent(row = {}) {
     if (now - value > 60000) recentLocalEventKeys.delete(key);
   }
   // Giữ event thật mới phát sinh trong RAM trước khi file append hoàn tất.
-  // Nhờ vậy /events sẽ thấy ngay event mới và dashboard không bị hiện rồi biến mất
-  // khi refresh xảy ra nhanh hơn thao tác ghi file.
+  // Nhờ vậy /events sẽ thấy ngay event mới và dashboard không bị hiện rồi biến mất khi refresh xảy ra nhanh hơn thao tác ghi file.
   recentLocalEventsBuffer.unshift(event);
   if (recentLocalEventsBuffer.length > RECENT_LOCAL_EVENT_BUFFER_MAX) {
     recentLocalEventsBuffer.length = RECENT_LOCAL_EVENT_BUFFER_MAX;
@@ -204,9 +175,7 @@ function readLocalDailyStat(date) {
     const file = localDailyStatsFile(date);
     if (!fs.existsSync(file)) return null;
     const row = JSON.parse(fs.readFileSync(file, 'utf8'));
-    // Luôn áp dụng lại rule bất thường khi đọc file.
-    // Nhờ vậy nếu bạn đổi ngưỡng trong .env rồi restart server,
-    // dữ liệu cũ vẫn được đánh dấu lại theo ngưỡng mới mà không cần seed lại.
+    // Luôn áp dụng lại rule bất thường khi đọc file. Nếu rule có thay đổi, thống kê cũ cũng sẽ được cập nhật theo.
     return applyStatAnomalyRules(row);
   } catch {
     return null;
@@ -771,7 +740,6 @@ function accessRecordToDevice(record, extra = {}, globalAutoCloseSeconds = 30) {
     enabled: record.enabled !== false,
     target: record.target === 'garageDoor' ? 'garageDoor' : 'mainDoor',
     accessType,
-    // RFID/keypad không còn cấu hình tự đóng riêng. Luôn dùng thời gian tự đóng chung của hệ thống.
     autoCloseSeconds: boundedAutoCloseSeconds(globalAutoCloseSeconds) || 30,
     ...extra,
   };
@@ -834,8 +802,6 @@ async function readUnifiedAutoCloseSeconds() {
 
 function normalizeAccessPolicy(body = {}, fallback = {}) {
   // accessType = phạm vi quyền truy cập; expiresAtIso/relativeMinutes = lớp hết hạn độc lập.
-  // relativeMinutes: có hiệu lực từ bây giờ đến X phút sau.
-  // expiresAtIso: có hiệu lực từ hiện tại đến ngày/giờ được chọn nếu accessType là full_time.
   const accessType = ['full_time', 'time_window', 'date_range'].includes(body.accessType)
     ? body.accessType
     : (fallback.accessType || 'full_time');
@@ -1864,9 +1830,8 @@ async function handleCommandRoute(req, res) {
 }
 
 app.post('/command', requireAuth, handleCommandRoute);
-app.post('/coap', requireAuth, handleCommandRoute);
 
-// ── MỚI: Sensor data cache (không cần secret — đọc-only) ─────────────
+// ── Sensor data cache (không cần secret — đọc-only) ─────────────
 app.get('/sensor', requireAuth, (req, res) => {
   if (!Object.keys(lastStatus).length) {
     return res.status(503).json({ error: 'ESP32 chua ket noi hoac chua push status' });
@@ -1883,7 +1848,6 @@ app.get('/sensor', requireAuth, (req, res) => {
   res.json({ ...lastStatus, connected: true, socketOpen: true, stale: false });
 });
 
-// ── MỚI: Trạng thái kết nối ESP32 ────────────────────────────────────
 app.get('/esp32-status', requireAuth, (req, res) => {
   res.json({
     connected: esp32Online(),
