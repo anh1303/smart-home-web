@@ -1,0 +1,7 @@
+node_modules/
+.env
+config/firebase_key.json
+logs/
+__pycache__/
+.DS_Store
+config/temp.txt
